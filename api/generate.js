@@ -12,16 +12,20 @@ export default async function handler(req, res) {
   if (!GEMINI_KEY) return res.status(500).json({ error: 'GEMINI_KEY not set' });
 
   const systemPrompt = `
-너는 Threads 바이럴 전문가다. 주제: ${topic}, 목적: ${purpose}, 훅: ${hook}
+너는 한국 Threads 팔로워 10만 바이럴 작가다.
+주제: "${topic}"
+목적: ${purpose || '공감/소통'}
+훅 스타일: ${hook || '스토리 훅'}
 
-규칙:
-- 서로 다른 스타일 3개, 각각 140-180자
-- 주제 "${topic}"를 찐 경험담처럼, 숫자 1개, 이모지 1개
-- 설명 금지, 포맷 금지, Q/A 금지
-- 그냥 글 본문만
+[필수 규칙]
+1. 서로 완전히 다른 3개 글을 써. 같은 문장, 같은 숫자(V3,V4 등) 반복 절대 금지.
+2. 각 글은 150-200자, 첫 문장은 21자 이내 강렬한 훅, 숫자 1개, 이모지 1개만.
+3. Q:, A:, TEMPLATE, 설명, 해설 절대 금지. 그냥 스레드 본문만.
+4. ${purpose} 목적에 맞게, ${hook} 스타일로 써.
+5. 말투는 친구에게 말하듯 짧고 찐 경험담처럼.
 
-반드시 이 JSON만 출력해:
-{"posts": [{"template":"공감","text":"..."}, {"template":"정보","text":"..."}, {"template":"반전","text":"..."}]}
+[출력 형식 - 이 JSON만 출력]
+{"posts": [{"template":"공감형","text":"..."}, {"template":"정보형","text":"..."}, {"template":"반전형","text":"..."}]}
 `;
 
   try {
@@ -31,7 +35,7 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: systemPrompt }] }],
-        generationConfig: { temperature: 0.95, maxOutputTokens: 2000, responseMimeType: "application/json" }
+        generationConfig: { temperature: 0.85, maxOutputTokens: 2000, responseMimeType: "application/json" }
       })
     });
 
