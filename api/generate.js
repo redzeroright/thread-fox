@@ -3,56 +3,40 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-  
+  if (req.method!== 'POST') return res.status(405).json({ error: 'POST only' });
+
   const { topic, purpose, hook } = req.body;
   if (!topic) return res.status(400).json({ error: 'topic required' });
 
   const GEMINI_KEY = process.env.GEMINI_KEY;
-  if (!GEMINI_KEY) return res.status(500).json({ error: 'GEMINI_KEY not set in Vercel env - Settings>Environment Variables에 넣고 Redeploy 해야함' });
+  if (!GEMINI_KEY) return res.status(500).json({ error: 'GEMINI_KEY not set' });
 
-  const systemPrompt = `
-너는 Threads 바이럴 전문가다. 주제: ${topic}, 목적: ${purpose}, 훅: ${hook}
-
-규칙:
-- 서로 다른 스타일 3개, 각각 140-180자
-- 주제 "${topic}"를 찐 경험담처럼, 숫자 1개, 이모지 1개
-- 설명 금지, 포맷 금지, Q/A 금지
-- 그냥 글 본문만
-
-반드시 이 JSON만 출력해:
-{"posts": [{"template":"공감","text":"..."}, {"template":"정보","text":"..."}, {"template":"반전","text":"..."}]}
-`;
+  const prompt = `너는 Threads 바이럴 전문가다. 주제:${topic} 목적:${purpose} 훅:${hook}
+조건: 서로 다른 3개, 각 150자 내외, 숫자1개, 이모지1개, Gen-Z말투, 설명금지
+JSON으로만 출력: {"posts": [{"template":"공감","text":"글1"},{"template":"정보","text":"글2"},{"template":"반전","text":"글3"}]}`;
 
   try {
-    // gemini-2.0-flash로 업그레이드 - 1.5-flash가 2025년 이후 404 나는 경우 있음
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
-    const geminiRes = await fetch(url, {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+    const r = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type':'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: systemPrompt }] }],
-        generationConfig: { temperature: 0.95, maxOutputTokens: 2000, responseMimeType: "application/json" }
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.9, maxOutputTokens: 2000 }
       })
     });
+    const data = await r.json();
+    if (data.error) return res.status(500).json({ error: data.error.message });
 
-    const data = await geminiRes.json();
-    if(data.error){
-      // API 에러 상세 리턴
-      return res.status(500).json({ error: `Gemini API 에러: ${data.error.message || JSON.stringify(data.error)}` });
-    }
     let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    if(!text) return res.status(500).json({ error: 'Gemini empty response', raw: JSON.stringify(data).slice(0,500) });
-    
-    // ```json 제거
-    text = text.replace(/```json/g,'').replace(/```/g,'').trim();
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Gemini returned no JSON: ' + text.slice(0,300));
-    
-    const parsed = JSON.parse(jsonMatch[0]);
-    if(!parsed.posts || !Array.isArray(parsed.posts)) throw new Error('Invalid JSON structure: ' + text.slice(0,300));
-    return res.status(200).json(parsed);
+    console.log("GEMINI RAW:", text.slice(0,500)); // Vercel 로그에 남음
 
+    text = text.replace(/```json|```/g,'').trim();
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) return res.status(500).json({ error: 'NO_JSON', raw: text.slice(0,500) });
+
+    const parsed = JSON.parse(m[0]);
+    return res.status(200).json(parsed);
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: e.message });
