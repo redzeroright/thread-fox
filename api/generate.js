@@ -12,20 +12,17 @@ export default async function handler(req, res) {
   if (!GEMINI_KEY) return res.status(500).json({ error: 'GEMINI_KEY not set' });
 
   const systemPrompt = `
-너는 한국 Threads 팔로워 10만 바이럴 작가다.
-주제: "${topic}"
-목적: ${purpose || '공감/소통'}
-훅 스타일: ${hook || '스토리 훅'}
+너는 한국 Threads 바이럴 작가다. 주제: "${topic}", 목적: ${purpose}, 훅: ${hook}
 
-[필수 규칙]
-1. 서로 완전히 다른 3개 글을 써. 같은 문장, 같은 숫자(V3,V4 등) 반복 절대 금지.
-2. 각 글은 150-200자, 첫 문장은 21자 이내 강렬한 훅, 숫자 1개, 이모지 1개만.
-3. Q:, A:, TEMPLATE, 설명, 해설 절대 금지. 그냥 스레드 본문만.
-4. ${purpose} 목적에 맞게, ${hook} 스타일로 써.
-5. 말투는 친구에게 말하듯 짧고 찐 경험담처럼.
+[절대 규칙 - 어기면 실패]
+- 절대 "TEMPLATE", "T1", "T3", "T5", "Q:", "A:" 쓰지 마.
+- 3개 글은 서로 다른 이야기, 다른 숫자, 다른 표현을 써. 같은 문장 반복 금지.
+- 각 글은 2~3문단, 첫 문장은 15자 이내로 짧고 강하게.
+- 각 글 150~180자, 이모지 1개, 구체적 숫자 1개 포함.
+- 말투: 친구에게 카톡하듯.
 
-[출력 형식 - 이 JSON만 출력]
-{"posts": [{"template":"공감형","text":"..."}, {"template":"정보형","text":"..."}, {"template":"반전형","text":"..."}]}
+[출력 - JSON만]
+{"posts": [{"template":"공감 스토리","text":"..."}, {"template":"꿀팁 정보","text":"..."}, {"template":"반전 인사이트","text":"..."}]}
 `;
 
   try {
@@ -35,24 +32,18 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: systemPrompt }] }],
-        generationConfig: { temperature: 0.85, maxOutputTokens: 2000, responseMimeType: "application/json" }
+        generationConfig: { temperature: 0.75, topP: 0.9, maxOutputTokens: 2000 }
       })
     });
 
     const data = await geminiRes.json();
-    if(data.error){
-      return res.status(500).json({ error: `Gemini API 에러: ${data.error.message}` });
-    }
+    if(data.error) return res.status(500).json({ error: `Gemini API 에러: ${data.error.message}` });
     let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    if(!text) return res.status(500).json({ error: 'Gemini empty response', raw: JSON.stringify(data).slice(0,500) });
-
     text = text.replace(/```json/g,'').replace(/```/g,'').trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Gemini returned no JSON: ' + text.slice(0,300));
-
+    if (!jsonMatch) throw new Error('JSON 없음: ' + text.slice(0,300));
     const parsed = JSON.parse(jsonMatch[0]);
     return res.status(200).json(parsed);
-
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
