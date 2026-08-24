@@ -1,48 +1,56 @@
 export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
   
   const { topic, purpose, hook } = req.body;
   if (!topic) return res.status(400).json({ error: 'topic required' });
 
   const GEMINI_KEY = process.env.GEMINI_KEY;
-  if (!GEMINI_KEY) return res.status(500).json({ error: 'GEMINI_KEY not set in Vercel env' });
+  if (!GEMINI_KEY) return res.status(500).json({ error: 'GEMINI_KEY not set in Vercel env - Settings>Environment Variables에 넣고 Redeploy 해야함' });
 
-  // Purpose x Hook Matrix System Prompt - 20년차 프롬프트 엔지니어링
- const systemPrompt = `
-주제: ${topic}, 목적: ${purpose}, 훅: ${hook}
+  const systemPrompt = `
+너는 Threads 바이럴 전문가다. 주제: ${topic}, 목적: ${purpose}, 훅: ${hook}
 
-너는 Threads 10만 팔로워를 만든 카피라이터다. 
-목적: ${purpose} = 정보제공은 저장, 공감은 댓글, 브랜딩은 팔로우 유도
-훅: ${hook} 스타일로 첫 문장 시작
+규칙:
+- 서로 다른 스타일 3개, 각각 140-180자
+- 주제 "${topic}"를 찐 경험담처럼, 숫자 1개, 이모지 1개
+- 설명 금지, 포맷 금지, Q/A 금지
+- 그냥 글 본문만
 
-조건:
-- 각 글 3개는 서로 다른 훅으로 시작, 150자 내외
-- 주제(${topic})에 대한 찐 한국인 경험담처럼 써. 숫자 1개 포함.
-- 이모지 1개만
-- 설명하지 마. 바로 글만 써.
-
-JSON만 출력:
-{"posts": [{"template":"공감","text":"글1"},{"template":"정보","text":"글2"},{"template":"반전","text":"글3"}]}
+반드시 이 JSON만 출력해:
+{"posts": [{"template":"공감","text":"..."}, {"template":"정보","text":"..."}, {"template":"반전","text":"..."}]}
 `;
 
   try {
-    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`, {
+    // gemini-2.0-flash로 업그레이드 - 1.5-flash가 2025년 이후 404 나는 경우 있음
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+    const geminiRes = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: systemPrompt + `\n\n주제: ${topic}\n목적: ${purpose}\n훅: ${hook}\n3개 생성해.` }] }],
-        generationConfig: { temperature: 0.9, maxOutputTokens: 2000 }
+        contents: [{ parts: [{ text: systemPrompt }] }],
+        generationConfig: { temperature: 0.95, maxOutputTokens: 2000, responseMimeType: "application/json" }
       })
     });
 
     const data = await geminiRes.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if(data.error){
+      // API 에러 상세 리턴
+      return res.status(500).json({ error: `Gemini API 에러: ${data.error.message || JSON.stringify(data.error)}` });
+    }
+    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if(!text) return res.status(500).json({ error: 'Gemini empty response', raw: JSON.stringify(data).slice(0,500) });
     
-    // JSON 파싱 (Gemini가 ```json으로 감싸는 경우 처리)
+    // ```json 제거
+    text = text.replace(/```json/g,'').replace(/```/g,'').trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Gemini returned no JSON: ' + text.slice(0,200));
+    if (!jsonMatch) throw new Error('Gemini returned no JSON: ' + text.slice(0,300));
     
     const parsed = JSON.parse(jsonMatch[0]);
+    if(!parsed.posts || !Array.isArray(parsed.posts)) throw new Error('Invalid JSON structure: ' + text.slice(0,300));
     return res.status(200).json(parsed);
 
   } catch (e) {
