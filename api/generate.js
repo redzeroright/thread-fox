@@ -4,26 +4,24 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method!== 'POST') return res.status(405).json({ error: 'POST only' });
-  const { topic, purpose, hook } = req.body;
+  const { topic } = req.body;
   const GEMINI_KEY = process.env.GEMINI_KEY;
+  const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`;
 
-  const prompt = `주제 "${topic}"로 스레드 3개. JSON만. 반복 금지. 각 160자.
-  {"posts": [{"template":"공감","text":"..."},{"template":"정보","text":"..."},{"template":"반전","text":"..."}]}`;
+  const makePrompt = (style) => `주제 "${topic}"로 ${style} 스타일 스레드 1개, 150자, 이모지 1개. 주제 외 잡담 금지. 반복 금지. 본문만.`;
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`;
-    const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contents:[{parts:[{text:prompt}]}], generationConfig:{temperature:0.7, maxOutputTokens:800}}) });
-    const data = await r.json();
-    let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    text = text.replace(/```json|```/g,'').trim();
-    const j = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
-
-    // 강제 후처리: TEMPLATE, Q/A, V3/V4 반복 강제 제거
-    j.posts = j.posts.map(p => ({
-      template: p.template.replace(/TEMPLATE.*|T\d/g,'').trim(),
-      text: p.text.replace(/Q:.*|A:.*|TEMPLATE.*/g,'').replace(/V3까지 2개월, V4 벽에 4주.*/g,'').slice(0,300).trim()
-    }));
-    return res.status(200).json(j);
+    // 3개를 따로 생성해야 절대 안 겹친다 - 이게 핵심
+    const styles = ["공감 실패담", "실용 꿀팁", "반전 인사이트"];
+    const posts = [];
+    for (let i=0; i<3; i++) {
+      const r = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ contents:[{parts:[{text: makePrompt(styles[i])}]}], generationConfig:{temperature:0.85, maxOutputTokens:400}}) });
+      const d = await r.json();
+      let t = d.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      t = t.replace(/TEMPLATE|Q:|A:|#\d/g,'').trim().slice(0,280);
+      posts.push({ template: styles[i], text: t });
+    }
+    return res.status(200).json({ posts });
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }
