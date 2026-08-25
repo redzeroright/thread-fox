@@ -1,6 +1,6 @@
 // =============================================================================
 // Thread-Fox  ·  /api/generate  (Vercel Serverless Function, zero-dependency)
-// REV: v5  (모델: gemini-3.7-flash · 프롬프트 품질 강화판)
+// REV: v6  (모델: gemini-3.7-flash · 프롬프트 품질 강화 · 폴백 양자역학 제거는 index.html)
 // -----------------------------------------------------------------------------
 // 스레드(Threads) 글 자동 생성 API.
 // 프론트엔드가 { topic, purpose, hook } 를 POST 하면, 지정된 목적/훅에 맞춘
@@ -14,7 +14,7 @@
 //   GEMINI_KEY            Gemini API 키  (기존 이름 유지. GEMINI_API_KEY 도 인식)
 //
 // [선택 환경변수 — 코드 수정 없이 튜닝/업그레이드 가능]
-//   GEMINI_MODEL         사용할 모델      (기본: gemini-3.5-flash-lite)
+//   GEMINI_MODEL         사용할 모델      (기본: gemini-3.7-flash)
 //                        └ 더 똑똑하게: gemini-3.7-flash / gemini-3.6-flash 등으로 교체만
 //   GEMINI_API_VERSION   API 버전         (기본: v1beta)
 //   GEMINI_TEMPERATURE   샘플링 온도      (미설정 시 전송 안 함 — 신형 모델 호환)
